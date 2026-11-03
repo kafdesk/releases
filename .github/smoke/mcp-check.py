@@ -22,8 +22,7 @@ for m in msgs:
     p.stdin.write(json.dumps(m) + "\n")
     p.stdin.flush()
 time.sleep(5)  # the server stops at EOF; give it time to answer first
-p.stdin.close()
-try:
+try:  # communicate() closes stdin, the server then exits
     out, err = p.communicate(timeout=20)
 except subprocess.TimeoutExpired:
     p.kill()
