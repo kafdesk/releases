@@ -132,5 +132,8 @@ jobs:
       - name: Install, start, talk to kafdesk-mcp, remove (clean ${{ matrix.image }})
         if: matrix.image != ''
         run: |
+          # The container shares this Ubuntu kernel; Debian and Fedora
+          # kernels do not restrict unprivileged user namespaces.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           docker run --rm --privileged \
             -v "$PWD:/w" -w /w ${{ matrix.image }} bash .github/smoke/linux.sh "$PKG"
