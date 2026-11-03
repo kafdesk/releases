@@ -6,18 +6,18 @@
 set -euxo pipefail
 pkg=$(readlink -f "$1")
 here=$(cd "$(dirname "$0")" && pwd)
-sudo=""; [ "$(id -u)" = 0 ] || sudo="sudo"
+sudo=(); [ "$(id -u)" = 0 ] || sudo=(sudo -E)
 
 if command -v apt-get >/dev/null; then
   export DEBIAN_FRONTEND=noninteractive
-  $sudo apt-get update -qq
-  $sudo -E apt-get install -y -qq "$pkg"
-  $sudo -E apt-get install -y -qq xvfb xauth python3 procps x11-utils dbus-x11 >/dev/null
-  remove="$sudo apt-get remove -y kafdesk"
+  "${sudo[@]}" apt-get update -qq
+  "${sudo[@]}" apt-get install -y -qq "$pkg"
+  "${sudo[@]}" apt-get install -y -qq xvfb xauth python3 procps x11-utils dbus-x11 >/dev/null
+  remove=("${sudo[@]}" apt-get remove -y kafdesk)
 else
-  $sudo dnf install -y -q "$pkg"
-  $sudo dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth python3 procps-ng xwininfo dbus-daemon dbus-x11
-  remove="$sudo dnf remove -y kafdesk"
+  "${sudo[@]}" dnf install -y -q "$pkg"
+  "${sudo[@]}" dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth python3 procps-ng xwininfo dbus-daemon dbus-x11
+  remove=("${sudo[@]}" dnf remove -y kafdesk)
 fi
 test -x /usr/bin/kafdesk
 test -x /usr/bin/kafdesk-mcp
@@ -47,9 +47,31 @@ echo "KafDesk started and showed its window"
 EOF
 chmod 755 /tmp/kd-start.sh
 cmd='dbus-run-session -- xvfb-run -a -s "-screen 0 1440x900x24" bash /tmp/kd-start.sh'
-if [ ${#runas[@]} -gt 0 ]; then "${runas[@]}" "$cmd"; else bash -c "$cmd"; fi
+start() { if [ ${#runas[@]} -gt 0 ]; then "${runas[@]}" "$cmd"; else bash -c "$cmd"; fi; }
+started=0
+start && started=1
+restricted=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)
+if [ "$started" = 0 ] && [ "$restricted" = 1 ] && [ ! -e /etc/apparmor.d/kafdesk ]; then
+  # Ubuntu 23.10+ forbids unprivileged user namespaces unless an AppArmor
+  # profile allows them; WebKit's sandbox (bubblewrap) needs one. Try the
+  # profile Chrome and VS Code ship, to see whether the package needs it.
+  echo "::warning::KafDesk does not start on stock $(grep -oP "(?<=^PRETTY_NAME=\").*(?=\")" /etc/os-release): AppArmor blocks WebKit's sandbox. Retrying with an AppArmor profile."
+  "${sudo[@]}" tee /etc/apparmor.d/kafdesk >/dev/null <<'PROFILE'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile kafdesk /usr/bin/kafdesk flags=(unconfined) {
+  userns,
+  include if exists <local/kafdesk>
+}
+PROFILE
+  "${sudo[@]}" apparmor_parser -r /etc/apparmor.d/kafdesk
+  if start; then echo "::warning::With the AppArmor profile KafDesk starts: the package must ship it."; fi
+  "${sudo[@]}" rm -f /etc/apparmor.d/kafdesk
+fi
+[ "$started" = 1 ] || { echo "KafDesk did not start"; exit 1; }
 tail -n 20 /tmp/kafdesk.log || true
 
-$remove
+"${remove[@]}"
 test ! -e /usr/bin/kafdesk
 echo "removed"

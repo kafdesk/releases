@@ -132,5 +132,5 @@ jobs:
       - name: Install, start, talk to kafdesk-mcp, remove (clean ${{ matrix.image }})
         if: matrix.image != ''
         run: |
-          docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+          docker run --rm --privileged \
             -v "$PWD:/w" -w /w ${{ matrix.image }} bash .github/smoke/linux.sh "$PKG"
