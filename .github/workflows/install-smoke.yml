@@ -104,8 +104,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: deb amd64 (Ubuntu 24.04), runner: ubuntu-24.04, image: "ubuntu:24.04", pkg: "kafdesk_*_amd64.deb" }
-          - { name: deb arm64 (Ubuntu 24.04), runner: ubuntu-24.04-arm, image: "ubuntu:24.04", pkg: "kafdesk_*_arm64.deb" }
+          # GitHub's Ubuntu machines are real VMs with Ubuntu's AppArmor
+          # rules, so the package runs there as on a desktop.
+          - { name: deb amd64 (Ubuntu 24.04), runner: ubuntu-24.04, image: "", pkg: "kafdesk_*_amd64.deb" }
+          - { name: deb arm64 (Ubuntu 24.04), runner: ubuntu-24.04-arm, image: "", pkg: "kafdesk_*_arm64.deb" }
+          # Other distributions in a container that allows the user
+          # namespaces WebKit's sandbox (bubblewrap) needs.
           - { name: deb amd64 (Debian 13), runner: ubuntu-24.04, image: "debian:13", pkg: "kafdesk_*_amd64.deb" }
           - { name: rpm x86_64 (Fedora 42), runner: ubuntu-24.04, image: "fedora:42", pkg: "kafdesk-*.x86_64.rpm" }
           - { name: rpm aarch64 (Fedora 42), runner: ubuntu-24.04-arm, image: "fedora:42", pkg: "kafdesk-*.aarch64.rpm" }
@@ -119,37 +123,14 @@ jobs:
           tag="${TAG:-$(gh release view -R "$GITHUB_REPOSITORY" --json tagName -q .tagName)}"
           gh release download "$tag" -R "$GITHUB_REPOSITORY" -p "${{ matrix.pkg }}" -p SHA256SUMS -D dl
           cd dl && f=$(ls ${{ matrix.pkg }}) && grep " $f\$" SHA256SUMS | sha256sum -c -
-      - name: Install, start, talk to kafdesk-mcp, remove (clean ${{ matrix.image }})
+          echo "PKG=dl/$f" >> "$GITHUB_ENV"
+      - name: Install, start, talk to kafdesk-mcp, remove (this machine)
+        if: matrix.image == ''
         run: |
-          docker run --rm -v "$PWD:/w" -w /w ${{ matrix.image }} bash -euxc '
-            pkg=$(ls dl/${{ matrix.pkg }})
-            if command -v apt-get >/dev/null; then
-              export DEBIAN_FRONTEND=noninteractive
-              apt-get update -qq
-              apt-get install -y -qq "./$pkg"
-              apt-get install -y -qq xvfb xauth python3 procps x11-utils >/dev/null
-              remove="apt-get remove -y kafdesk"
-            else
-              dnf install -y -q "./$pkg"
-              dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth python3 procps-ng xwininfo
-              remove="dnf remove -y kafdesk"
-            fi
-            test -x /usr/bin/kafdesk && test -x /usr/bin/kafdesk-mcp
-            test -f /usr/share/applications/kafdesk.desktop
-            mkdir -p /tmp/kdapp
-            python3 .github/smoke/mcp-check.py /usr/bin/kafdesk-mcp /tmp/kdapp
-            export HOME=/tmp/kdhome; mkdir -p $HOME
-            xvfb-run -a -s "-screen 0 1440x900x24" bash -c "
-              /usr/bin/kafdesk > /tmp/kafdesk.log 2>&1 &
-              pid=\$!
-              sleep 20
-              if ! kill -0 \$pid 2>/dev/null; then cat /tmp/kafdesk.log; echo KafDesk exited; exit 1; fi
-              xwininfo -root -tree | grep -i kafdesk || { cat /tmp/kafdesk.log; echo no KafDesk window; exit 1; }
-              ps -o rss=,args= -p \$pid
-              kill \$pid
-            "
-            tail -n 20 /tmp/kafdesk.log || true
-            $remove
-            test ! -e /usr/bin/kafdesk
-            echo removed
-          '
+          sysctl kernel.apparmor_restrict_unprivileged_userns || true
+          bash .github/smoke/linux.sh "$PKG"
+      - name: Install, start, talk to kafdesk-mcp, remove (clean ${{ matrix.image }})
+        if: matrix.image != ''
+        run: |
+          docker run --rm --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+            -v "$PWD:/w" -w /w ${{ matrix.image }} bash .github/smoke/linux.sh "$PKG"
