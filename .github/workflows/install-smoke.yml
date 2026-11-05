@@ -190,7 +190,9 @@ jobs:
           if [ "${{ matrix.os }}" = windows ]; then pat="KafDesk-*-${{ matrix.arch }}-setup.exe"; else pat="kafdesk_*_${{ matrix.arch }}.deb"; fi
           gh release download "$FROM_TAG" -R "$GITHUB_REPOSITORY" -p "$pat" -p SHA256SUMS -D old
           cd old && f=$(ls $pat) && grep " $f\$" SHA256SUMS | sha256sum -c -
-          echo "OLD_PKG=$PWD/$f" >> "$GITHUB_ENV"
+          path="$PWD/$f"
+          [ "${{ matrix.os }}" = windows ] && path=$(cygpath -w "$path")
+          echo "OLD_PKG=$path" >> "$GITHUB_ENV"
       - name: Wait until kafdesk.com offers the new version
         if: env.MODE == 'install'
         shell: bash

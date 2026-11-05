@@ -54,6 +54,10 @@ done
 echo "still \$v after 5 minutes"; tail -80 /tmp/kafdesk.log; exit 1
 EOF
 chmod 755 /tmp/kd-update.sh
-sudo -u kd -H dbus-run-session -- xvfb-run -a -s "-screen 0 1440x900x24" bash /tmp/kd-update.sh
+# A clean login environment for kd (sudo keeps the runner's HOME and
+# XDG_RUNTIME_DIR otherwise).
+sudo install -d -m 700 -o kd -g kd /tmp/kd-run
+sudo -u kd env -i HOME=/home/kd USER=kd LOGNAME=kd PATH=/usr/local/bin:/usr/bin:/bin \
+  XDG_RUNTIME_DIR=/tmp/kd-run LANG=C.UTF-8 dbus-run-session -- xvfb-run -a -s "-screen 0 1440x900x24" bash /tmp/kd-update.sh
 sudo rm -f /etc/polkit-1/rules.d/49-kafdesk-smoke.rules
 sudo apt-get remove -y -qq kafdesk
