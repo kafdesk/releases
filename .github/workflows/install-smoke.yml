@@ -213,12 +213,18 @@ jobs:
       - name: Update like a user (Ubuntu)
         if: matrix.os == 'linux'
         run: bash .github/smoke/update-linux.sh "$MODE" "$OLD_PKG" "${NEW#v}"
+      # One path list per OS: mixed Windows and /tmp paths have no common root.
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && matrix.os == 'windows'
+        with:
+          name: update-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/kafdesk-updated.png
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.os == 'linux'
         with:
           name: update-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            ${{ runner.temp }}/kafdesk-updated.png
             /tmp/kafdesk-updated.png
             /tmp/kafdesk.log
           if-no-files-found: ignore
