@@ -25,7 +25,13 @@ New-Item -ItemType Directory -Force $app | Out-Null
 
 $env:TEMP = $tmp
 $env:TMP = $tmp
-$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9222 --remote-allow-origins=*"
+$devtools = "--remote-debugging-port=9222 --remote-allow-origins=*"
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $devtools
+# The app passes its own browser arguments, which win over the variable;
+# WebView2's per-app policy key (this throwaway runner only) wins over both.
+$pol = "HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+New-Item -Force $pol | Out-Null
+New-ItemProperty -Force -Path $pol -Name "KafDesk.exe" -Value $devtools | Out-Null
 $kd = Start-Process $exe -PassThru
 python "$PSScriptRoot\update-driver.py" cdp $Mode
 $driver = $LASTEXITCODE
