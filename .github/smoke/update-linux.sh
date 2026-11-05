@@ -13,7 +13,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 sudo apt-get update -qq
 sudo apt-get install -y -qq xvfb xauth python3 python3-gi gir1.2-atspi-2.0 at-spi2-core \
-  dbus-x11 procps x11-utils polkitd pkexec >/dev/null
+  dbus-x11 procps x11-utils imagemagick polkitd pkexec >/dev/null
 sudo apt-get install -y -qq "$pkg"
 dpkg-query -W kafdesk
 
