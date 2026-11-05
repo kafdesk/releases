@@ -13,11 +13,13 @@ export DEBIAN_FRONTEND=noninteractive
 
 # The runner image's own apt timers can hold the dpkg lock for minutes.
 sudo systemctl stop unattended-upgrades apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+# The man-db trigger can hang for many minutes on the runner images.
+sudo rm -f /var/lib/man-db/auto-update
 apt=(sudo apt-get -o DPkg::Lock::Timeout=300)
 "${apt[@]}" update -qq
 "${apt[@]}" install -y -qq xvfb xauth python3 python3-gi gir1.2-atspi-2.0 at-spi2-core \
   dbus-x11 procps x11-utils imagemagick polkitd pkexec >/dev/null
-"${apt[@]}" install -y -qq "$pkg"
+"${apt[@]}" install -y "$pkg"
 dpkg-query -W kafdesk
 
 id kd >/dev/null 2>&1 || sudo useradd -m kd
