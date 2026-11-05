@@ -42,7 +42,7 @@ python3 /tmp/update-driver.py atspi $mode || { tail -50 /tmp/kafdesk.log; exit 1
 # Install: KafDesk quits, pkexec apt-get installs, KafDesk starts again.
 for i in \$(seq 1 60); do
   v=\$(dpkg-query -W -f='\${Version}' kafdesk 2>/dev/null || true)
-  if [ "\$v" = "$want" ] && pgrep -x kafdesk >/dev/null && ! kill -0 \$pid 2>/dev/null; then
+  if [ "\${v%-*}" = "$want" ] && pgrep -x kafdesk >/dev/null && ! kill -0 \$pid 2>/dev/null; then
     echo "updated to \$v and restarted"
     sleep 5
     import -window root /tmp/kafdesk-updated.png 2>/dev/null || true

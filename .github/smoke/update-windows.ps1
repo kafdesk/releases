@@ -16,8 +16,20 @@ $p = Start-Process $Setup -ArgumentList '/S', "/D=$dir" -Wait -PassThru
 if ($p.ExitCode -ne 0) { throw "installer exit code $($p.ExitCode)" }
 $exe = Join-Path $dir "KafDesk.exe"
 if (-not (Test-Path $exe)) { throw "KafDesk.exe not in $dir" }
-$before = (Get-Item $exe).VersionInfo.ProductVersion
-"installed $before in $dir"
+# The installer records its version in the uninstall entry; the exe's own
+# version resource is printed for the record.
+function Get-Installed {
+  foreach ($k in 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AKStudioKafDesk',
+                 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AKStudioKafDesk') {
+    $v = (Get-ItemProperty $k -ErrorAction SilentlyContinue).DisplayVersion
+    if ($v) { return $v }
+  }
+  return ""
+}
+$before = Get-Installed
+$hash0 = (Get-FileHash $exe).Hash
+$vi = (Get-Item $exe).VersionInfo
+"installed $before in $dir (exe ProductVersion '$($vi.ProductVersion)', FileVersion '$($vi.FileVersion)')"
 
 $app = Join-Path $env:APPDATA "KafDesk"
 New-Item -ItemType Directory -Force $app | Out-Null
@@ -42,9 +54,10 @@ if ($Mode -eq "probe") { Stop-Process -Id $kd.Id -Force; exit 0 }
 $deadline = (Get-Date).AddMinutes(5)
 while ((Get-Date) -lt $deadline) {
   Start-Sleep 5
-  $v = (Get-Item $exe -ErrorAction SilentlyContinue).VersionInfo.ProductVersion
+  $v = Get-Installed
+  $changed = (Test-Path $exe) -and ((Get-FileHash $exe).Hash -ne $hash0)
   $running = Get-Process KafDesk -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $kd.Id -and $_.Path -eq $exe }
-  if ($v -like "$Want*" -and $running -and $kd.HasExited) {
+  if ($v -like "$Want*" -and $changed -and $running -and $kd.HasExited) {
     "updated $before -> $v, running again (pid $($running[0].Id))"
     Start-Sleep 10
     Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -60,6 +73,6 @@ while ((Get-Date) -lt $deadline) {
     exit 0
   }
 }
-"version now: $v; old process exited: $($kd.HasExited)"
+"version now: $v; exe replaced: $changed; old process exited: $($kd.HasExited)"
 Show-Logs
 throw "KafDesk did not update to $Want within 5 minutes"
