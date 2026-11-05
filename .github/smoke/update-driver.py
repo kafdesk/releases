@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Drives a running KafDesk window for the self-update test, like a user.
 
+  update-driver.py uia   <probe|install>   Windows: UI Automation (as Narrator sees it)
   update-driver.py cdp   <probe|install>   Windows: WebView2's DevTools port 9222
   update-driver.py atspi <probe|install>   Linux: the accessibility tree (AT-SPI)
 
@@ -76,6 +77,51 @@ class CDP:
 
     def text(self):
         return self.js("document.body.innerText")
+
+
+# --- Windows: UI Automation -------------------------------------------------
+
+class UIA:
+    def __init__(self):
+        import uiautomation as auto  # pip install uiautomation
+
+        self.auto = auto
+        self.win = auto.WindowControl(searchDepth=1, RegexName="KafDesk")
+        if not self.win.Exists(90, 1):
+            sys.exit("no KafDesk window")
+        log("window:", self.win.Name)
+        # Chromium builds its accessibility tree on the first request.
+        for _ in range(45):
+            if self.win.ButtonControl(searchDepth=40, Name="Settings").Exists(0, 0):
+                return
+            time.sleep(2)
+        log(self.text())
+        sys.exit("the KafDesk page has no Settings button in UI Automation")
+
+    def click(self, pattern):
+        b = self.win.ButtonControl(searchDepth=40, RegexName=pattern)
+        if not b.Exists(0, 0):
+            return False
+        try:
+            b.GetInvokePattern().Invoke()
+        except Exception:
+            b.Click(simulateMove=False)
+        return True
+
+    def has_text(self, text):
+        return self.win.Control(searchDepth=40, SubName=text).Exists(0, 0)
+
+    def open_settings(self):
+        if not self.has_text("Check kafdesk.com for new versions"):
+            self.click("^Settings$")
+            time.sleep(2)
+
+    def text(self):
+        out = []
+        for c, depth in self.auto.WalkControl(self.win, maxDepth=40):
+            if c.Name:
+                out.append(f"{c.ControlTypeName}: {c.Name}")
+        return "\n".join(out)[:6000]
 
 
 # --- Linux: AT-SPI ----------------------------------------------------------
@@ -167,7 +213,7 @@ class ATSPI:
 
 def main():
     how, mode = sys.argv[1], sys.argv[2]
-    d = CDP() if how == "cdp" else ATSPI()
+    d = {"cdp": CDP, "uia": UIA, "atspi": ATSPI}[how]()
     if mode == "probe":
         for _ in range(30):
             d.open_settings()

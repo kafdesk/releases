@@ -33,13 +33,16 @@ $pol = "HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArgumen
 New-Item -Force $pol | Out-Null
 New-ItemProperty -Force -Path $pol -Name "KafDesk.exe" -Value $devtools | Out-Null
 $kd = Start-Process $exe -PassThru
-python "$PSScriptRoot\update-driver.py" cdp $Mode
+python "$PSScriptRoot\update-driver.py" uia $Mode
 $driver = $LASTEXITCODE
 function Show-Logs {
   Get-ChildItem -Recurse $app -Filter *.log -ErrorAction SilentlyContinue | ForEach-Object { "== $($_.FullName)"; Get-Content $_.FullName -Tail 60 }
   Get-ChildItem -Recurse $dir -Filter *.log -ErrorAction SilentlyContinue | ForEach-Object { "== $($_.FullName)"; Get-Content $_.FullName -Tail 60 }
 }
-if ($driver -ne 0) { Show-Logs; throw "driver failed" }
+if ($driver -ne 0) {
+  Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe' or Name='KafDesk.exe'" | Select-Object -First 3 | ForEach-Object { "$($_.Name): $($_.CommandLine)" }
+  Show-Logs; throw "driver failed"
+}
 if ($Mode -eq "probe") { Stop-Process -Id $kd.Id -Force; exit 0 }
 
 # KafDesk quits, the helper runs the new setup into $dir and starts it again.
