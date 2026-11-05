@@ -10,9 +10,11 @@ sudo=(); [ "$(id -u)" = 0 ] || sudo=(sudo -E)
 
 if command -v apt-get >/dev/null; then
   export DEBIAN_FRONTEND=noninteractive
-  "${sudo[@]}" apt-get update -qq
-  "${sudo[@]}" apt-get install -y -qq "$pkg"
-  "${sudo[@]}" apt-get install -y -qq xvfb xauth python3 procps x11-utils dbus-x11 >/dev/null
+  # The runner image's own apt timers can hold the dpkg lock for minutes.
+  "${sudo[@]}" systemctl stop unattended-upgrades apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+  "${sudo[@]}" apt-get -o DPkg::Lock::Timeout=300 update -qq
+  "${sudo[@]}" apt-get -o DPkg::Lock::Timeout=300 install -y -qq "$pkg"
+  "${sudo[@]}" apt-get -o DPkg::Lock::Timeout=300 install -y -qq xvfb xauth python3 procps x11-utils dbus-x11 >/dev/null
   remove=("${sudo[@]}" apt-get remove -y kafdesk)
 else
   "${sudo[@]}" dnf install -y -q "$pkg"

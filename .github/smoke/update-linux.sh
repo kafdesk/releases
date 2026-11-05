@@ -11,10 +11,13 @@ mode=$1 pkg=$(readlink -f "$2") want=${3:-}
 here=$(cd "$(dirname "$0")" && pwd)
 export DEBIAN_FRONTEND=noninteractive
 
-sudo apt-get update -qq
-sudo apt-get install -y -qq xvfb xauth python3 python3-gi gir1.2-atspi-2.0 at-spi2-core \
+# The runner image's own apt timers can hold the dpkg lock for minutes.
+sudo systemctl stop unattended-upgrades apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
+apt=(sudo apt-get -o DPkg::Lock::Timeout=300)
+"${apt[@]}" update -qq
+"${apt[@]}" install -y -qq xvfb xauth python3 python3-gi gir1.2-atspi-2.0 at-spi2-core \
   dbus-x11 procps x11-utils imagemagick polkitd pkexec >/dev/null
-sudo apt-get install -y -qq "$pkg"
+"${apt[@]}" install -y -qq "$pkg"
 dpkg-query -W kafdesk
 
 id kd >/dev/null 2>&1 || sudo useradd -m kd
@@ -60,4 +63,4 @@ sudo install -d -m 700 -o kd -g kd /tmp/kd-run
 sudo -u kd env -i HOME=/home/kd USER=kd LOGNAME=kd PATH=/usr/local/bin:/usr/bin:/bin \
   XDG_RUNTIME_DIR=/tmp/kd-run LANG=C.UTF-8 dbus-run-session -- xvfb-run -a -s "-screen 0 1440x900x24" bash /tmp/kd-update.sh
 sudo rm -f /etc/polkit-1/rules.d/49-kafdesk-smoke.rules
-sudo apt-get remove -y -qq kafdesk
+"${apt[@]}" remove -y -qq kafdesk
