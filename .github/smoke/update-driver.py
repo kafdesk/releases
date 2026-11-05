@@ -2,7 +2,6 @@
 """Drives a running KafDesk window for the self-update test, like a user.
 
   update-driver.py uia   <probe|install>   Windows: UI Automation (as Narrator sees it)
-  update-driver.py cdp   <probe|install>   Windows: WebView2's DevTools port 9222
   update-driver.py atspi <probe|install>   Linux: the accessibility tree (AT-SPI)
 
 probe:   opens Settings and checks that the copy knows how to install updates
@@ -11,10 +10,8 @@ install: waits until KafDesk has found the newer version (the daily check
          runs 30 s after start when settings.json allows it), opens Settings
          and clicks "Install update". The caller then checks the new version.
 """
-import json
 import sys
 import time
-import urllib.request
 
 AUTO = "Download updates automatically"
 INSTALL = "Install update"
@@ -23,60 +20,6 @@ DEADLINE = 240  # seconds to find the update
 
 def log(*a):
     print("[driver]", *a, flush=True)
-
-
-# --- Windows: Chrome DevTools protocol on the WebView2 ---------------------
-
-class CDP:
-    def __init__(self, port=9222):
-        import websocket  # pip install websocket-client
-
-        url = None
-        for _ in range(90):
-            try:
-                targets = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=3))
-                pages = [t for t in targets if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
-                if pages:
-                    url = pages[0]["webSocketDebuggerUrl"]
-                    log("page:", pages[0].get("url"))
-                    break
-            except Exception:
-                pass
-            time.sleep(2)
-        if not url:
-            sys.exit("no WebView2 DevTools page on port 9222 (WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS ignored?)")
-        self.ws = websocket.create_connection(url, timeout=30, suppress_origin=True)
-        self.n = 0
-
-    def js(self, expr):
-        self.n += 1
-        self.ws.send(json.dumps({"id": self.n, "method": "Runtime.evaluate",
-                                 "params": {"expression": expr, "returnByValue": True, "awaitPromise": True}}))
-        while True:
-            m = json.loads(self.ws.recv())
-            if m.get("id") == self.n:
-                r = m.get("result", {})
-                if "exceptionDetails" in r:
-                    raise RuntimeError(r["exceptionDetails"])
-                return r.get("result", {}).get("value")
-
-    # Buttons are matched on their visible text or aria-label.
-    FIND = """(re) => [...document.querySelectorAll('button')].find(
-        b => new RegExp(re).test(((b.getAttribute('aria-label') || '') + ' ' + b.textContent).trim()))"""
-
-    def click(self, pattern):
-        return self.js(f"(() => {{ const b = ({self.FIND})({json.dumps(pattern)}); if (!b) return false; b.click(); return true; }})()")
-
-    def has_text(self, text):
-        return self.js(f"document.body.innerText.includes({json.dumps(text)})")
-
-    def open_settings(self):
-        if not self.has_text("Check kafdesk.com for new versions"):
-            self.click("^Settings$")
-            time.sleep(1.5)
-
-    def text(self):
-        return self.js("document.body.innerText")
 
 
 # --- Windows: UI Automation -------------------------------------------------
@@ -213,7 +156,7 @@ class ATSPI:
 
 def main():
     how, mode = sys.argv[1], sys.argv[2]
-    d = {"cdp": CDP, "uia": UIA, "atspi": ATSPI}[how]()
+    d = {"uia": UIA, "atspi": ATSPI}[how]()
     if mode == "probe":
         for _ in range(30):
             d.open_settings()

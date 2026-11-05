@@ -3,8 +3,8 @@
 #   update-windows.ps1 -Mode install -Setup <old setup.exe> -Want <new version>
 # Installs into a folder with Cyrillic letters and downloads into a Cyrillic
 # temp folder (paths must stay Unicode end to end), starts KafDesk with
-# update checks allowed, clicks "Install update" through WebView2's DevTools
-# port like a user, then checks that the helper ran the new installer into
+# update checks allowed, clicks "Install update" through UI Automation (as
+# Narrator would), then checks that the helper ran the new installer into
 # the same folder and started KafDesk again.
 param([string]$Mode, [string]$Setup, [string]$Want = "")
 $ErrorActionPreference = "Stop"
@@ -25,13 +25,6 @@ New-Item -ItemType Directory -Force $app | Out-Null
 
 $env:TEMP = $tmp
 $env:TMP = $tmp
-$devtools = "--remote-debugging-port=9222 --remote-allow-origins=*"
-$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $devtools
-# The app passes its own browser arguments, which win over the variable;
-# WebView2's per-app policy key (this throwaway runner only) wins over both.
-$pol = "HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
-New-Item -Force $pol | Out-Null
-New-ItemProperty -Force -Path $pol -Name "KafDesk.exe" -Value $devtools | Out-Null
 $kd = Start-Process $exe -PassThru
 python "$PSScriptRoot\update-driver.py" uia $Mode
 $driver = $LASTEXITCODE
