@@ -28,8 +28,10 @@ function Get-Installed {
 }
 $before = Get-Installed
 $hash0 = (Get-FileHash $exe).Hash
-$vi = (Get-Item $exe).VersionInfo
-"installed $before in $dir (exe ProductVersion '$($vi.ProductVersion)', FileVersion '$($vi.FileVersion)')"
+# .NET's FileVersionInfo returns empty strings for this resource; Explorer's
+# property system reads it as users see it in Properties > Details.
+$item = (New-Object -ComObject Shell.Application).Namespace($dir).ParseName("KafDesk.exe")
+"installed $before in $dir (exe Product version '$($item.ExtendedProperty('System.Software.ProductVersion'))', File version '$($item.ExtendedProperty('System.FileVersion'))')"
 
 $app = Join-Path $env:APPDATA "KafDesk"
 New-Item -ItemType Directory -Force $app | Out-Null
