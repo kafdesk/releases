@@ -1,0 +1,56 @@
+name: Exe version check
+# Diagnostic: why Windows reports an empty ProductVersion for KafDesk.exe
+# although the version resource is in the file. Installs a release into an
+# ASCII and a Cyrillic folder and asks Windows directly.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version
+        required: true
+        default: "0.2.8"
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - name: Install and read the version resource
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/kafdesk/releases/releases/download/v$env:VERSION/KafDesk-$env:VERSION-x64-setup.exe"
+          $setup = Join-Path $env:RUNNER_TEMP "setup.exe"
+          Invoke-WebRequest $url -OutFile $setup
+          Add-Type -TypeDefinition @'
+          using System; using System.Runtime.InteropServices;
+          public static class Ver {
+            [DllImport("version.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+            public static extern int GetFileVersionInfoSizeW(string f, out int h);
+            [DllImport("version.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+            public static extern bool GetFileVersionInfoW(string f, int h, int len, byte[] data);
+          }
+          '@
+          foreach ($dir in 'C:\KafDeskAscii', 'C:\Программы\KafDesk') {
+            $p = Start-Process $setup -ArgumentList '/S', "/D=$dir" -Wait -PassThru
+            "== $dir (installer exit $($p.ExitCode))"
+            $exe = Join-Path $dir "KafDesk.exe"
+            Get-ChildItem $dir | Format-Table Name, Length -AutoSize | Out-String
+            $h = 0
+            $size = [Ver]::GetFileVersionInfoSizeW($exe, [ref]$h)
+            $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            "GetFileVersionInfoSizeW = $size (last error $err)"
+            if ($size -gt 0) {
+              $buf = New-Object byte[] $size
+              $ok = [Ver]::GetFileVersionInfoW($exe, 0, $size, $buf)
+              "GetFileVersionInfoW = $ok"
+              ([BitConverter]::ToString($buf, 0, [Math]::Min(96, $size)))
+            }
+            [Diagnostics.FileVersionInfo]::GetVersionInfo($exe) | Format-List * | Out-String
+            $sh = New-Object -ComObject Shell.Application
+            $f = $sh.Namespace($dir).ParseName("KafDesk.exe")
+            "Explorer: File version '$($f.ExtendedProperty('System.FileVersion'))', Product version '$($f.ExtendedProperty('System.Software.ProductVersion'))'"
+            Start-Process "$dir\uninstall.exe" -ArgumentList '/S' -Wait -ErrorAction SilentlyContinue
+          }
